@@ -1,0 +1,62 @@
+
+
+services:
+  host-a:
+    build: ./host_a
+    container_name: host-a
+    hostname: host-a
+    # Privilégios necessários para IPsec e XFRM
+    privileged: true 
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      # Monta os módulos do kernel do HOST
+      - /lib/modules:/lib/modules:ro
+      # Monta o arquivo de config que criamos
+      - ./host_a/ipsec.conf:/etc/ipsec.conf:ro
+      # O ipsec.secrets será criado pelo adapter
+    networks:
+      - qkd-net
+    # Inicia o strongSwan (charon)
+    command: >
+      bash -c "ipsec start && tail -f /dev/null"
+    # Permite ao kernel do contêiner encaminhar pacotes
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.accept_redirects=0
+      - net.ipv4.conf.all.send_redirects=0
+
+  host-b:
+    build: ./host_b
+    container_name: host-b
+    hostname: host-b
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - /lib/modules:/lib/modules:ro
+      - ./host_b/ipsec.conf:/etc/ipsec.conf:ro
+    networks:
+      - qkd-net
+    command: >
+      bash -c "ipsec start && tail -f /dev/null"
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.accept_redirects=0
+      - net.ipv4.conf.all.send_redirects=0
+
+  quditto:
+    build: ./quditto
+    container_name: quditto
+    hostname: quditto
+    networks:
+      - qkd-net
+    ports:
+      # Expõe o mock para o host local (opcional)
+      - "8000:8000"
+
+networks:
+  qkd-net:
+    driver: bridge
