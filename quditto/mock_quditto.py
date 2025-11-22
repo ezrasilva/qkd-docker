@@ -1,60 +1,49 @@
-# mock_quditto.py (Stateful com Cache)
+# mock_quditto.py (Versão Estabilizada)
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import json, os, secrets, time
+import json, secrets, time, hashlib
 
-# --- Cache Global da Chave ---
-KEY_CACHE = {
-    "key_id": None,
-    "enc_key_hex": None,
-    "auth_key_hex": None,
-    "generation_time": 0
-}
-KEY_TTL_SECONDS = 60  # A chave é válida por 60 segundos
-# ---------------------------
+# Configuração
+KEY_TTL_SECONDS = 60
 
 class Handler(BaseHTTPRequestHandler):
     
-    def _get_key(self):
-        """
-        Verifica o cache. Se a chave estiver expirada ou não existir, 
-        gera uma nova. Retorna a chave atual.
-        """
-        global KEY_CACHE
-        now = time.time()
+    def _get_current_key(self):
+        # Usa o timestamp inteiro dividido pelo TTL para criar "janelas" de tempo.
+        # Ex: Se TTL=60, todo timestamp entre 1200 e 1259 gera o mesmo 'time_window'.
+        time_window = int(time.time() / KEY_TTL_SECONDS)
         
-        # Verifica se a chave expirou ou se é a primeira execução
-        if (now - KEY_CACHE["generation_time"]) > KEY_TTL_SECONDS or KEY_CACHE["key_id"] is None:
-            print(f"[Quditto] Gerando nova chave (TTL={KEY_TTL_SECONDS}s)...")
-            KEY_CACHE = {
-                "key_id": secrets.token_hex(8),
-                "enc_key_hex": secrets.token_hex(32),
-                "auth_key_hex": secrets.token_hex(32), # Para o Passo 6 (XFRM)
-                "generation_time": now
-            }
-        else:
-            print(f"[Quditto] Servindo chave do cache: {KEY_CACHE['key_id']}")
+        # Gera uma chave determinística para essa janela de tempo
+        # Isso garante que Host A e Host B recebam a MESMA chave se chamarem dentro do mesmo minuto.
+        seed = f"super-secret-seed-{time_window}".encode()
+        
+        # Deriva as chaves usando SHA256 para garantir entropia consistente
+        full_hash = hashlib.sha256(seed).hexdigest()
+        
+        key_id = full_hash[:16]       # Primeiros 16 chars como ID
+        enc_key = full_hash[16:]      # Restante como chave (simulada)
+        
+        # Calcula TTL restante para o fim da janela atual
+        next_window = (time_window + 1) * KEY_TTL_SECONDS
+        remaining_ttl = next_window - time.time()
 
-        # Calcula o TTL restante
-        remaining_ttl = KEY_TTL_SECONDS - int(now - KEY_CACHE["generation_time"])
-        
         return {
-            "key_id": KEY_CACHE["key_id"],
-            "enc_key_hex": KEY_CACHE["enc_key_hex"],
-            "auth_key_hex": KEY_CACHE["auth_key_hex"],
-            "ttl": remaining_ttl
+            "key_id": key_id,
+            "enc_key_hex": enc_key,
+            "ttl": max(0, remaining_ttl) # Evita TTL negativo
         }
 
     def do_GET(self):
         if self.path == "/keys/next":
-            resp = self._get_key()
+            resp = self._get_current_key()
             self.send_response(200)
             self.send_header("Content-type","application/json")
             self.end_headers()
             self.wfile.write(json.dumps(resp).encode())
+            print(f"[Quditto] Servindo chave ID {resp['key_id']} (TTL={resp['ttl']:.1f}s)")
         else:
             self.send_response(404)
             self.end_headers()
 
 if __name__ == "__main__":
-    print("Mock Quditto (Stateful) rodando na porta 8000...")
+    print("Mock Quditto (Sincronizado) rodando na porta 8000...")
     HTTPServer(("0.0.0.0", 8000), Handler).serve_forever()

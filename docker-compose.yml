@@ -5,7 +5,7 @@ services:
     build: ./host_a
     container_name: host-a
     hostname: host-a
-    # Privilégios necessários para IPsec e XFRM
+    # Privilégios necessários para IPsec
     privileged: true 
     cap_add:
       - NET_ADMIN
@@ -20,7 +20,7 @@ services:
       - qkd-net
     # Inicia o strongSwan (charon)
     command: >
-      bash -c "ipsec start && tail -f /dev/null"
+      bash -c "ipsec start && sleep 5 && python3 kms_adapter_vici.py"
     # Permite ao kernel do contêiner encaminhar pacotes
     sysctls:
       - net.ipv4.ip_forward=1
@@ -41,7 +41,7 @@ services:
     networks:
       - qkd-net
     command: >
-      bash -c "ipsec start && tail -f /dev/null"
+            bash -c "ipsec start && sleep 5 && python3 kms_adapter_vici.py"
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.accept_redirects=0

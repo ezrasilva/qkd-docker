@@ -1,9 +1,9 @@
-# Use Ubuntu 22.04 como base, conforme o plano
+# Use Ubuntu 22.04 como base
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Instalar todas as dependências do Passo 0
+# 1. Instalar dependências do sistema (StrongSwan, GStreamer, utils de rede)
 RUN apt-get update && apt-get install -y \
     strongswan \
     strongswan-swanctl \
@@ -24,12 +24,12 @@ RUN apt-get update && apt-get install -y \
     iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar dependências Python do adapter
-RUN pip3 install requests psutil
+RUN pip3 install requests psutil vici
 
-# Copiar o adapter para dentro do contêiner
-COPY kms_adapter_psk.py /app/
 WORKDIR /app
 
-# Comando para manter o contêiner rodando
-CMD ["tail", "-f", "/dev/null"]
+COPY kms_adapter_vici.py /app/
+
+CMD /usr/lib/ipsec/charon & \
+    sleep 5 && \
+    python3 kms_adapter_vici.py
